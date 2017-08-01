@@ -6,28 +6,38 @@ sys.setdefaultencoding( "utf-8" )
 from threading import Lock, Thread
 from Queue import Queue
 
-# 三种拦截器
-word_filter=['出国打工','移民','希腊打工','希腊工作','发达国家招','影视剧拍摄','YY兼职','打字','录入','挂机','武汉赴澳洲','哪个都可以','一单只需','美国司机','保安希腊','赴澳服务员',
-           '北京悦菲时代','重庆宏亚','濮阳市博栋','酒泉言鼎','信阳市澳海','青岛捷凯' ,'河北金源','厦门澳诚','腾讯','中劳网','闪聘','赶集','个人','先生','女士','小姐','麻将','网络推广','足疗','个体','足浴',
-           "人才", "派遣", "劳务", "出入境", "打字", "网络销售","人寿", "太平洋", "保险", "未知", "歌城", "中国平安","出国", "诊所", "演员", "刷单","地产", "代理", "链家", "人力", "酒会", "职介","ktv","KTV", "酒吧", "娱乐", "会所","淘宝","文化", "百姓网"]
+# 五种拦截器
+word_filter=['出国打工','移民','希腊打工','希腊工作','发达国家招','影视剧拍摄','YY兼职','挂机','武汉赴澳洲','哪个都可以','一单只需','美国司机','保安希腊','赴澳服务员',
+           '北京悦菲','重庆宏亚','濮阳市博栋','酒泉言鼎','信阳市澳海','青岛捷凯' ,'河北金源','厦门澳诚','腾讯','中劳网','闪聘','赶集','个人','先生','女士','小姐','麻将','网络推广','个体',
+           "人才", "派遣", "劳务", "出入境", "未知", "出国", "人寿","中国平安","刷单","人力", "酒会", "职介","文化", "百姓网","链家"]
+# word_filter=['出国打工','移民','希腊打工','希腊工作','发达国家招','影视剧拍摄','YY兼职','打字','录入','挂机','武汉赴澳洲','哪个都可以','一单只需','美国司机','保安希腊','赴澳服务员',
+#            '北京悦菲时代','重庆宏亚','濮阳市博栋','酒泉言鼎','信阳市澳海','青岛捷凯' ,'河北金源','厦门澳诚','腾讯','中劳网','闪聘','赶集','个人','先生','女士','小姐','麻将','网络推广','足疗','个体','足浴',
+#            "人才", "派遣", "劳务", "出入境", "打字", "网络销售","人寿", "太平洋", "保险", "未知", "歌城", "中国平安","出国", "诊所", "演员", "刷单","地产", "代理", "链家", "人力", "酒会", "职介","ktv","KTV", "酒吧", "娱乐", "会所","淘宝","文化", "百姓网"]
 phone_rgt_filter=set()
 phone_black_filter=set()
+# 优先词汇
+key_word0=dict()
+# 普通词汇
+key_word1=dict()
+# 城市
+city_filter=[]
 # 入库量
 num_count=0
 result=[]
 mac=platform.node()=='MacBook'
 
 def open_db(db_name):
+    # "mysql -h dzadmin-01 -u search -p'Zxt!PKC@Ru5y' blue_user"
+    # 'user_geek'
+    # 'user_boss'
+    # 'login_info'
+
     if db_name=='spider':
-        if mac:
-            db = MySQLdb.connect(db='spider', port=3308, host='127.0.0.1', user="spider", passwd="b@4RkJFo!6yL", charset="utf8")
-        else:
-            db = MySQLdb.connect(db='spider', port=3306,host='10.51.178.150', user="spider",passwd="b@4RkJFo!6yL", charset="utf8")
-    elif db_name=='boss':
-        if mac:
-            db = MySQLdb.connect(db='boss', port=3306,host='192.168.1.31', user="boss",passwd="boss", charset="utf8")
-        else:
-            db = MySQLdb.connect(db='boss', port=3306,host='appdb-05', user="skanzhun",passwd="sIjk!@1*U", charset="utf8")
+        db = MySQLdb.connect(db='spider', port=3306,host='10.51.178.150', user="spider",passwd="b@4RkJFo!6yL", charset="utf8")
+    elif db_name=='boss_login':
+        db = MySQLdb.connect(db='boss', port=3306,host='appdb-05', user="skanzhun",passwd="sIjk!@1*U", charset="utf8")
+    elif db_name=='dz_login':
+        db = MySQLdb.connect(db='blue_user', port=3306,host='dzadmin-01', user="search",passwd="Zxt!PKC@Ru5y", charset="utf8")
     return db
 
 pool=None
@@ -57,11 +67,11 @@ def loop(q,l):
         else:
             q.put(-1)
             break
-        # company, publish_date, update_date,tele
+        # [title,company,city,publish_date,publish_date,tele]
         for item in items:
-            publish_date=int(item[1].strftime('%Y%m%d'))
-            update_date=int(item[2].strftime('%Y%m%d'))
-            cursor.execute('select id,publish_date,update_date from tc58_tele where tele="%s" limit 1'%(item[3]))
+            publish_date=int(item[3].strftime('%Y%m%d'))
+            update_date=int(item[4].strftime('%Y%m%d'))
+            cursor.execute('select id,publish_date,update_date from tc58_tele where tele="%s" limit 1'%(item[5]))
             result_58=cursor.fetchall()
             # 表里已经存在该电话，更新时间。
             if result_58:
@@ -70,17 +80,23 @@ def loop(q,l):
                     cursor.execute('update tc58_tele set publish_date="%s" where id=%s'%(publish_date,result_58[0][0]))
                 # 这个电话号最近新发了新职位
                 if update_date>result_58[0][2]:
-                    cursor.execute('update tc58_tele set update_date="%s" where id=%s'%(update_date,result_58[0][0]))
+                    title = item[0].replace("'", "''").replace('\\', '\\\\')
+                    company_name = item[1].replace("'", "''").replace('\\', '\\\\')
+                    city=item[2].replace("'", "''").replace('\\', '\\\\')
+                    # 这里
+                    cursor.execute('update tc58_tele set update_date="%s",title="%s",company="%s",city="%s" where id=%s'%(update_date,title,company_name,city,result_58[0][0]))
             # 表里没有该电话，插入
             else:
                 # 后两位偶数发文案0
-                if int(item[3][9:])%2==0:
-                    doc_type=0
-                # 奇数发文案1
-                else:
-                    doc_type = 1
-                company_name = item[0].replace("'", "''").replace('\\', '\\\\')
-                cursor.execute('insert into tc58_tele VALUES (DEFAULT ,"%s","%s","%s","%s","%s","%s","%s",DEFAULT )'%(company_name,item[3],publish_date,publish_date,doc_type,0,0))
+                # if int(item[3][9:])%2==0:
+                #     doc_type=0
+                # # 奇数发文案1
+                # else:
+                #     doc_type = 1
+                title = item[0].replace("'", "''").replace('\\', '\\\\')
+                company_name = item[1].replace("'", "''").replace('\\', '\\\\')
+                city = item[2].replace("'", "''").replace('\\', '\\\\')
+                cursor.execute('insert into tc58_tele VALUES (DEFAULT ,"%s","%s","%s","%s","%s","%s","%s","%s",DEFAULT )'%(title,company_name,city,item[5],publish_date,publish_date,0,0))
             with l:
                 num_count+=1
                 if num_count%10000==0:
@@ -107,8 +123,8 @@ def black_loop(q):
 # 58同城数据量近两千万，首次入库需要分批查询。
 def start_task(start_index,end_index,r):
     global result
-    # 处理量、因名字不符被拒绝、已注册拦截量、黑名单拦截量
-    num=word_count=rgt_count=black_count=0
+    # 处理量、因名字不符被拒绝、已注册拦截量、关键字不匹配量、黑名单拦截量
+    num=word_count=rgt_count=key_count=city_count=black_count=0
     q=Queue()
     l=Lock()
     q.put(0)
@@ -116,7 +132,7 @@ def start_task(start_index,end_index,r):
     cursor=conn.cursor()
     print '开始查询【%s~%s】'%(start_index,end_index)
     # 查询
-    cursor.execute('select title,company,publish_date,tele from tc58_jobs_master where id>%s and id<=%s'%(start_index,end_index))
+    cursor.execute('select title,company,publish_date,tele,place from tc58_jobs_master where id>%s and id<=%s'%(start_index,end_index))
     print '查询完毕【%s~%s】，开始合并' % (start_index, end_index)
     items=cursor.fetchall()
     # 按【电话号码】合并后的结果
@@ -124,22 +140,33 @@ def start_task(start_index,end_index,r):
     result_dic={}
     # 电话黑名单queue
     q_black = Queue()
-    for _ in xrange(15):
+    for _ in xrange(10):
         # 开启向数据库插入电话黑名单的线程
         Thread(target=black_loop,args=(q_black,)).start()
     for item in items:
         num+=1
         if num%10000==0:
-            print '合并进度:%s,词汇拦截:%s,注册拦截:%s,黑名单拦截:%s'%(num,word_count,rgt_count,black_count)
+            print '合并进度:%s,词汇拦截:%s,注册拦截:%s,关键词不符:%s,城市:%s,黑名单拦截:%s'%(num,word_count,rgt_count,key_count,city_count,black_count)
         title=item[0]
         company=item[1]
         publish_date=item[2]
         tele=item[3]
+        city=item[4]
         # 任意一项为空则舍弃该条数据
         for i in item:
             if not i:
                 break
         else:
+            valid = False
+            city=city.split('-')[0]
+            for i in city_filter:
+                if city[:len(i)]==i:
+                    city=i
+                    valid = True
+                    break
+            if not valid:
+                city_count+=1
+                continue
             # 电话号码无效，舍弃
             if not is_valid(tele):
                 continue
@@ -151,35 +178,57 @@ def start_task(start_index,end_index,r):
             if tele in phone_rgt_filter:
                 rgt_count += 1
                 continue
+            valid=False
+            # 职位关键字
+            for item in key_word0:
+                if item in title:
+                    title=key_word0[item]
+                    valid=True
+                    break
+            if not valid:
+                for item in key_word1:
+                    if item in title:
+                        title = key_word1[item]
+                        valid = True
+                        break
+            if not valid:
+                key_count+=1
+                continue
             # 词汇拦截
             for word in word_filter:
-                if word in title or word in company:
+                if word in company or word in title:
                     company = company.replace("'", "''").replace('\\', '\\\\')
                     # 更新电话拦截
                     phone_black_filter.add(tele)
                     q_black.put((company, tele))
                     word_count += 1
                     break
+
             # 各种规则都符合后，开始整理
             else:
                 # 合并
                 if tele in result_dic:
                     # publish_date比当前publish_date小，更新
-                    if publish_date < result_dic[tele][1]:
-                        result_dic[tele][1]=publish_date
+                    if publish_date < result_dic[tele][3]:
+                        result_dic[tele][3]=publish_date
                     # publish_date比当前update_date大，更新
-                    elif publish_date > result_dic[tele][2]:
-                        result_dic[tele][2]=publish_date
+                    elif publish_date > result_dic[tele][4]:
+                        result_dic[tele][4]=publish_date
+                        result_dic[tele][0]=title
+                        result_dic[tele][1]=company
+                        result_dic[tele][2]=city
+
+
                 # 新增
                 else:
-                    result_dic[tele]=[company,publish_date,publish_date,tele]
+                    result_dic[tele]=[title,company,city,publish_date,publish_date,tele]
     q_black.put(-1)
     result=result_dic.values()
     # 释放内存
     del result_dic
-    print "【%s~%s】词汇拦截:%s,已注册拦截:%s,黑名单拦截:%s。 得到数据:%s,开始插入"%(start_index, end_index,word_count,rgt_count,black_count,len(result))
+    print "【%s~%s】词汇拦截:%s,已注册拦截:%s,关键字不匹配:%s,城市:%s,黑名单拦截:%s。 得到数据:%s,开始插入"%(start_index, end_index,word_count,rgt_count,key_count,city_count,black_count,len(result))
     ts=[]
-    for _ in xrange(30):
+    for _ in xrange(50):
         t=Thread(target=loop,args=(q,l))
         t.start()
         ts.append(t)
@@ -196,9 +245,11 @@ def start_task(start_index,end_index,r):
 def feed_filter():
     print '初始化拦截器'
     conn_spider=open_db('spider')
-    conn_boss=open_db('boss')
+    conn_boss=open_db('boss_login')
+    conn_dz=open_db('dz_login')
     cursor_spider=conn_spider.cursor()
     cursor_boss=conn_boss.cursor()
+    cursor_dz=conn_dz.cursor()
 
     #已经注册
     cursor_boss.execute('select account from login_info')
@@ -206,11 +257,33 @@ def feed_filter():
         if is_valid(item[0]):
             phone_rgt_filter.add(item[0])
 
+    cursor_dz.execute('select account from login_info')
+    for item in cursor_dz.fetchall():
+        if is_valid(item[0]):
+            phone_rgt_filter.add(item[0])
+
     #电话黑名单
     cursor_spider.execute('select tele from tele_black')
     for item in cursor_spider.fetchall():
-        phone_rgt_filter.add(item[0])
-    print '拦截器初始化成功，词汇：%s个，注册：%s个，黑名单：%s个'%(len(word_filter),len(phone_rgt_filter),len(phone_black_filter))
+        phone_black_filter.add(item[0])
+    #城市
+    cursor_spider.execute('select city from tc58_city')
+    for item in cursor_spider.fetchall():
+        city_filter.append(item[0])
+
+    # 关键字
+    with open('joblist') as f:
+        for line in f.readlines():
+            line = line.strip()
+            line_arr = line.split('/')
+            for key in line_arr:
+                for item in key_word1:
+                    if key in item and key != item:
+                        key_word0[item] = key_word1[item]
+                key_word1[key] = line
+        for key in key_word0:
+            key_word1.pop(key)
+    print '拦截器初始化成功，词汇：%s个，注册：%s个，黑名单：%s个，关键字：%s个,城市：%s'%(len(word_filter),len(phone_rgt_filter),len(phone_black_filter),len(key_word0)+len(key_word1),len(city_filter))
 # 有效手机号码
 c = re.compile(r'^1\d{10}$')
 def is_valid(phone_num):
@@ -218,7 +291,7 @@ def is_valid(phone_num):
 
 # 去除库中已有，但后来被填入黑名单的
 def clean():
-    print '依照黑名单清除已存数据'
+    print '依照黑名单清除已存数据..'
     conn = open_db('spider')
     cursor = conn.cursor()
     cursor.execute('delete from tc58_tele where tele in (select tele from tele_black)')
