@@ -136,13 +136,12 @@ def send_queue(q,l):
             q.put(-1)
             break
         id, title, city, tele=item
-        # r=requests.get("http://114.113.154.13/smsJson.aspx?action=send&account=ADC0093&mobile=%s&content=【店长直聘】%s大量人才在找%s工作，下载店长直聘APP免费看简历免费招人！http://t.cn/R9c3ygz 退订回T&password=D2B6269D4FC77629BC4798A41EFE7217"%(tele,city,title))
+        r=requests.get("http://114.113.154.13/smsJson.aspx?action=send&account=ADC0093&mobile=%s&content=【店长直聘】%s大量人才在找%s工作，下载店长直聘APP免费看简历免费招人！http://t.cn/R9c3ygz 退订回T&password=D2B6269D4FC77629BC4798A41EFE7217"%(tele,city,title))
         # 新接口判断
-        # if json.loads(r.text)['message']=='操作成功':
-        if True:
+        if json.loads(r.text)['message']=='操作成功':
             cursor.execute('update tc58_tele set is_sended=1 where id=%s' % id)
         else:
-            # print r.text
+            print r.text
             cursor.execute('update tc58_tele set is_sended=2 where id=%s' % id)
         print tele
 
